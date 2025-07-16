@@ -10,7 +10,8 @@ public class GunShooter : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(0)) // 左クリック
+        // 左クリック:0, 右クリック:1
+        if (Input.GetMouseButtonDown(1))
         {
             Shoot();
         }

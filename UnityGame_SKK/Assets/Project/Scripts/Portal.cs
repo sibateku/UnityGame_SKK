@@ -20,17 +20,25 @@ public class Portal : MonoBehaviour
         if (other.gameObject == player)
         {
             Debug.Log("Player touched warp portal. Warping to: " + warpTargetPosition);
-            player.transform.position = warpTargetPosition;
+            
+            CharacterController cc = player.GetComponent<CharacterController>();
+            if(cc != null)
+            {
+                cc.enabled = false;
+                player.transform.position = warpTargetPosition;
+                cc.enabled = true;
+            }
+            else player.transform.position = warpTargetPosition;
 
             // 両方のポータルを削除
             if (exitPortal != null)
             {
                 Destroy(exitPortal);
-                Debug.Log("Exit portal destroyed.");
+                // Debug.Log("Exit portal destroyed.");
             }
 
             Destroy(gameObject); // 自分自身（入口）を削除
-            Debug.Log("Entrance portal destroyed.");
+            // Debug.Log("Entrance portal destroyed.");
         }
     }
 }
