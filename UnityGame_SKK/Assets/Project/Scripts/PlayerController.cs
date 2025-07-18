@@ -49,6 +49,9 @@ public class PlayerController : MonoBehaviour
 
     [Header("Crouch Camera")]
     public float crouchCamHeightOffset = -0.5f;
+    [Header("Game Over")]
+    public GameOverOverlay gameOverOverlay;
+    public Transform teleportTarget;
 
     void Awake()
     {
@@ -90,7 +93,7 @@ public class PlayerController : MonoBehaviour
             controller.height = isCrouching ? crouchHeight : originalHeight;
             controller.center = new Vector3(0, controller.height / 2, 0);
         }
-        
+
         // Repeat Inputs
         if (input.Attack.IsPressed())
         { Attack(); }
@@ -121,10 +124,10 @@ public class PlayerController : MonoBehaviour
         isCrouching = true;
     }
 
-    void FixedUpdate() 
+    void FixedUpdate()
     { MoveInput(input.Movement.ReadValue<Vector2>()); }
 
-    void LateUpdate() 
+    void LateUpdate()
     { LookInput(input.Look.ReadValue<Vector2>()); }
 
     void MoveInput(Vector2 input)
@@ -138,7 +141,7 @@ public class PlayerController : MonoBehaviour
 
         controller.Move(transform.TransformDirection(moveDirection) * currentSpeed * Time.deltaTime);
         _PlayerVelocity.y += gravity * Time.deltaTime;
-        if(isGrounded && _PlayerVelocity.y < 0)
+        if (isGrounded && _PlayerVelocity.y < 0)
             _PlayerVelocity.y = -2f;
         controller.Move(_PlayerVelocity * Time.deltaTime);
     }
@@ -156,7 +159,7 @@ public class PlayerController : MonoBehaviour
         transform.Rotate(Vector3.up * (mouseX * Time.deltaTime * sensitivity));
     }
 
-    void OnEnable() 
+    void OnEnable()
     { input.Enable(); }
 
     void OnDisable()
@@ -185,7 +188,7 @@ public class PlayerController : MonoBehaviour
 
     string currentAnimationState;
 
-    public void ChangeAnimationState(string newState) 
+    public void ChangeAnimationState(string newState)
     {
         // STOP THE SAME ANIMATION FROM INTERRUPTING WITH ITSELF //
         if (currentAnimationState == newState) return;
@@ -198,9 +201,9 @@ public class PlayerController : MonoBehaviour
     void SetAnimations()
     {
         // If player is not attacking
-        if(!attacking)
+        if (!attacking)
         {
-            if(_PlayerVelocity.x == 0 &&_PlayerVelocity.z == 0)
+            if (_PlayerVelocity.x == 0 && _PlayerVelocity.z == 0)
             { ChangeAnimationState(IDLE); }
             else
             { ChangeAnimationState(WALK); }
@@ -210,7 +213,7 @@ public class PlayerController : MonoBehaviour
     void CameraBob()
     {
         Vector2 move = input.Movement.ReadValue<Vector2>();
-        
+
         Vector3 baseCamPos = (isCrouching || isSliding) ? camCrouchLocalPos : camOriginalLocalPos;
 
         if (move.magnitude > 0.1f && isGrounded)
@@ -225,13 +228,13 @@ public class PlayerController : MonoBehaviour
             float bobOffsetX = Mathf.Cos(bobTimer * 0.5f) * horizontalAmount;
 
             Vector3 targetPos = baseCamPos + new Vector3(bobOffsetX, bobOffsetY, 0);
-            cam.transform.localPosition = Vector3.Lerp(cam.transform.localPosition,targetPos,Time.deltaTime * bobSpeed);
+            cam.transform.localPosition = Vector3.Lerp(cam.transform.localPosition, targetPos, Time.deltaTime * bobSpeed);
         }
         else
         {
             bobTimer = 0;
 
-            cam.transform.localPosition = Vector3.Lerp(cam.transform.localPosition,baseCamPos,Time.deltaTime * bobSpeed);
+            cam.transform.localPosition = Vector3.Lerp(cam.transform.localPosition, baseCamPos, Time.deltaTime * bobSpeed);
         }
     }
 
@@ -256,7 +259,7 @@ public class PlayerController : MonoBehaviour
 
     public void Attack()
     {
-        if(!readyToAttack || attacking) return;
+        if (!readyToAttack || attacking) return;
 
         readyToAttack = false;
         attacking = true;
@@ -267,7 +270,7 @@ public class PlayerController : MonoBehaviour
         audioSource.pitch = Random.Range(0.9f, 1.1f);
         audioSource.PlayOneShot(swordSwing);
 
-        if(attackCount == 0)
+        if (attackCount == 0)
         {
             ChangeAnimationState(ATTACK1);
             attackCount++;
@@ -287,13 +290,13 @@ public class PlayerController : MonoBehaviour
 
     void AttackRaycast()
     {
-        if(Physics.Raycast(cam.transform.position, cam.transform.forward, out RaycastHit hit, attackDistance, attackLayer))
-        { 
+        if (Physics.Raycast(cam.transform.position, cam.transform.forward, out RaycastHit hit, attackDistance, attackLayer))
+        {
             HitTarget(hit.point);
 
-            if(hit.transform.TryGetComponent<Actor>(out Actor T))
+            if (hit.transform.TryGetComponent<Actor>(out Actor T))
             { T.TakeDamage(attackDamage); }
-        } 
+        }
     }
 
     void HitTarget(Vector3 pos)
@@ -304,4 +307,53 @@ public class PlayerController : MonoBehaviour
         GameObject GO = Instantiate(hitEffect, pos, Quaternion.identity);
         Destroy(GO, 20);
     }
+
+    void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (hit.gameObject.name.Contains("ball"))
+        {
+            BallAttack ball = hit.gameObject.GetComponent<BallAttack>();
+            if (ball != null && !ball.hasHitPlayer)
+            {
+                ball.hasHitPlayer = true;
+
+                Destroy(hit.gameObject);
+                Debug.Log("Hit by enemy ball (via Controller): " + hit.gameObject.name);
+
+                StartCoroutine(SlowTime(0.1f, 3.0f));
+                gameOverOverlay.ShowGameOver();
+                StartCoroutine(Teleport());
+            }
+        }
+    }
+
+    IEnumerator SlowTime(float slowFactor, float duration)
+    {
+        Time.timeScale = slowFactor;
+        Time.fixedDeltaTime = 0.02f * slowFactor;
+
+        yield return new WaitForSecondsRealtime(duration);
+
+        Time.timeScale = 1f;
+        Time.fixedDeltaTime = 0.02f;
+    }
+
+    IEnumerator Teleport()
+    {
+        yield return new WaitForSecondsRealtime(3f);
+
+        if (teleportTarget != null)
+        {
+            controller.enabled = false;
+            transform.position = teleportTarget.position;
+            controller.enabled = true;
+
+            gameOverOverlay.HideOverlay();
+        }
+        else
+        {
+            Debug.Log("TP is no set");
+        }
+    }
+
 }
