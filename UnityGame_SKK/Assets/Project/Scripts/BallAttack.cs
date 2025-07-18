@@ -3,20 +3,21 @@ using System.Collections.Generic;
 using UnityEngine;
 
 public class BallAttack : MonoBehaviour
-
 {
     private GameObject player;
-    // Start is called before the first frame update
+    public float speed = 20f;
+    public bool hasHitPlayer = false;
+
     void Start()
     {
         player = GameObject.Find("Player");
         transform.LookAt(player.transform);
+        Destroy(gameObject, 3f);
     }
 
-    // Update is called once per frame
     void Update()
     {
-        transform.Translate(0, 0, 1);
-        Destroy(gameObject, 1);
+        transform.Translate(Vector3.forward * speed * Time.deltaTime);
     }
+    
 }
