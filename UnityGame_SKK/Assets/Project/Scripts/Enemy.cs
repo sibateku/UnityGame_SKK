@@ -23,11 +23,11 @@ public class Enemy : MonoBehaviour
 
             count++;
             Debug.Log(count);
-            if (count % 75 == 0)
+            if (count % 150 == 0)
             {
                 Instantiate(ball, transform.position, Quaternion.identity);
             }
-        // transform.position += transform.forward * 0.01f;
+        // transform.position += transform.forward * 0.03f;
         }
     }
 

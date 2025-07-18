@@ -7,7 +7,6 @@ public class PlayerController : MonoBehaviour
 {
     PlayerInput playerInput;
     PlayerInput.MainActions input;
-
     CharacterController controller;
     Animator animator;
     AudioSource audioSource;
@@ -16,6 +15,8 @@ public class PlayerController : MonoBehaviour
     public float moveSpeed = 5;
     public float gravity = -9.8f;
     public float jumpHeight = 1.2f;
+    public float originalHeight;
+    public float crouchHeight = 1.0f;
 
     Vector3 _PlayerVelocity;
 
@@ -26,10 +27,16 @@ public class PlayerController : MonoBehaviour
     public float sprintDelay = 0.1f;
     private bool isSprinting = false;
 
+    [Header("crouch")]
+    public float crouchSpeed = 2f;
+    public float slideSpeed = 10f;
+    public float slideDuration = 1.0f;
+    private bool isCrouching = false;
+    private bool isSliding = false;
+
     [Header("Camera")]
     public Camera cam;
     public float sensitivity;
-
     float xRotation = 0f;
 
     [Header("Camera Bobbing")]
@@ -38,6 +45,10 @@ public class PlayerController : MonoBehaviour
 
     private float bobTimer = 0f;
     private Vector3 camOriginalLocalPos;
+    private Vector3 camCrouchLocalPos;
+
+    [Header("Crouch Camera")]
+    public float crouchCamHeightOffset = -0.5f;
 
     void Awake()
     {
@@ -53,6 +64,9 @@ public class PlayerController : MonoBehaviour
         Cursor.visible = false;
 
         camOriginalLocalPos = cam.transform.localPosition;
+        camCrouchLocalPos = camOriginalLocalPos + new Vector3(0, -0.5f, 0);
+
+        originalHeight = controller.height;
     }
 
     void Update()
@@ -62,13 +76,49 @@ public class PlayerController : MonoBehaviour
         Vector2 moveInput = input.Movement.ReadValue<Vector2>();
         bool isMovingForward = moveInput.y > 0.1f;
         bool sprintHeld = input.Sprint.IsPressed();
-        isSprinting = sprintHeld && isMovingForward;
+        bool crouchHeld = input.Crouch.IsPressed();
+        isSprinting = sprintHeld && isMovingForward && !isCrouching && !isSliding;
+
+        if (isSprinting && crouchHeld && isGrounded && !isSliding)
+        {
+            StartCoroutine(Slide());
+        }
+
+        if (!isSliding)
+        {
+            isCrouching = crouchHeld;
+            controller.height = isCrouching ? crouchHeight : originalHeight;
+            controller.center = new Vector3(0, controller.height / 2, 0);
+        }
+        
         // Repeat Inputs
         if (input.Attack.IsPressed())
         { Attack(); }
 
         SetAnimations();
         CameraBob();
+    }
+
+    IEnumerator Slide()
+    {
+        isSliding = true;
+        float time = 0f;
+        Vector2 moveInput = input.Movement.ReadValue<Vector2>();
+        Vector3 moveDrection = new Vector3(moveInput.x, 0, moveInput.y);
+        Vector3 direction = transform.TransformDirection(moveDrection.normalized);
+
+        while (time < slideDuration)
+        {
+            float t = time / slideDuration;
+            float currentSpeed = Mathf.Lerp(slideSpeed, 0, t);
+            controller.Move(direction * currentSpeed * Time.deltaTime);
+            time += Time.deltaTime;
+            yield return null;
+        }
+
+        isSliding = false;
+        isSprinting = false;
+        isCrouching = true;
     }
 
     void FixedUpdate() 
@@ -79,11 +129,12 @@ public class PlayerController : MonoBehaviour
 
     void MoveInput(Vector2 input)
     {
+        if (isSliding) return;
         Vector3 moveDirection = Vector3.zero;
         moveDirection.x = input.x;
         moveDirection.z = input.y;
 
-        float currentSpeed = isSprinting ? sprintSpeed : moveSpeed;
+        float currentSpeed = isCrouching ? crouchSpeed : (isSprinting ? sprintSpeed : moveSpeed);
 
         controller.Move(transform.TransformDirection(moveDirection) * currentSpeed * Time.deltaTime);
         _PlayerVelocity.y += gravity * Time.deltaTime;
@@ -117,13 +168,10 @@ public class PlayerController : MonoBehaviour
         if (isGrounded)
             _PlayerVelocity.y = Mathf.Sqrt(jumpHeight * -3.0f * gravity);
     }
-
     void AssignInputs()
     {
         input.Jump.performed += ctx => Jump();
         input.Attack.started += ctx => Attack();
-        input.Sprint.started += ctx => isSprinting = true;
-        input.Sprint.canceled += ctx => isSprinting = false;
     }
 
     // ---------- //
@@ -162,24 +210,28 @@ public class PlayerController : MonoBehaviour
     void CameraBob()
     {
         Vector2 move = input.Movement.ReadValue<Vector2>();
+        
+        Vector3 baseCamPos = (isCrouching || isSliding) ? camCrouchLocalPos : camOriginalLocalPos;
 
         if (move.magnitude > 0.1f && isGrounded)
         {
-        float speedMultiplier = isSprinting ? 2.0f : 1.0f;
-        float verticalAmount = isSprinting ? bobAmount * 2.0f : bobAmount * 1.0f;
-        float horizontalAmount = isSprinting ? bobAmount * 1.8f : bobAmount * 0.5f;
+            float speedMultiplier = isSprinting ? 2.0f : 1.0f;
+            float verticalAmount = isSprinting ? bobAmount * 2.0f : bobAmount * 1.0f;
+            float horizontalAmount = isSprinting ? bobAmount * 1.8f : bobAmount * 0.5f;
 
-        bobTimer += Time.deltaTime * bobSpeed * speedMultiplier;
+            bobTimer += Time.deltaTime * bobSpeed * speedMultiplier;
 
-        float bobOffsetY = Mathf.Sin(bobTimer) * verticalAmount;
-        float bobOffsetX = Mathf.Cos(bobTimer * 0.5f) * horizontalAmount;
+            float bobOffsetY = Mathf.Sin(bobTimer) * verticalAmount;
+            float bobOffsetX = Mathf.Cos(bobTimer * 0.5f) * horizontalAmount;
 
-        cam.transform.localPosition = camOriginalLocalPos + new Vector3(bobOffsetX, bobOffsetY, 0);
-    }
+            Vector3 targetPos = baseCamPos + new Vector3(bobOffsetX, bobOffsetY, 0);
+            cam.transform.localPosition = Vector3.Lerp(cam.transform.localPosition,targetPos,Time.deltaTime * bobSpeed);
+        }
         else
         {
             bobTimer = 0;
-            cam.transform.localPosition = Vector3.Lerp(cam.transform.localPosition, camOriginalLocalPos, Time.deltaTime * bobSpeed);
+
+            cam.transform.localPosition = Vector3.Lerp(cam.transform.localPosition,baseCamPos,Time.deltaTime * bobSpeed);
         }
     }
 
