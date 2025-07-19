@@ -42,7 +42,7 @@ public class move_wall : MonoBehaviour
     {
         isMoving = false;
         //Debug.Log("一時停止");
-        yield return new WaitForSeconds(1.0f);
+        yield return new WaitForSeconds(0.0f);
         direction *= -1;
         isMoving = true;
         //Debug.Log("再開");
